@@ -52,9 +52,10 @@ WHISPER_MODEL = "whisper-large-v3-turbo"
 
 COOLDOWN_SECONDS = 300
 
-SYSTEM_PROMPT = """你是一个聪明智慧的AI助手。
-回答要细致化，详情化
-可以用emoji，但不要滥用，用户要求的内容尽可能的完成"""
+SYSTEM_PROMPT = """你是一个友好、简洁、聪明的AI助手。
+回答要口语化，不要长篇大论，除非用户明确要求详细。
+可以用emoji，但不要滥用。用户要求的尽可能的答应并完成"""
+有啥用？
 
 # ============ 身份问答固定回复 ============
 # 想改机器人自我介绍，只改这里即可
@@ -98,7 +99,7 @@ BROWSER_UA = (
     "Chrome/120.0.0.0 Safari/537.36"
 )
 
-INIT_CREDITS = 20
+INIT_CREDITS = 10
 CHECKIN_CREDITS = 5
 COST_SIMPLE = 1
 COST_MEDIUM = 3
