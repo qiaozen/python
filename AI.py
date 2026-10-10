@@ -137,6 +137,11 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS idx_history_user
                 ON history(user_id, id DESC);
+            CREATE TABLE IF NOT EXISTS announcements (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                content     TEXT NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         self._migrate()
         self.conn.commit()
@@ -302,6 +307,21 @@ class Database:
 
     def count_users(self):
         return self.conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+    # ---------- 公告 ----------
+    def add_announcement(self, content):
+        self.conn.execute(
+            "INSERT INTO announcements (content) VALUES (?)", (content,)
+        )
+        self.conn.commit()
+
+    def list_all_user_ids(self):
+        return [
+            r[0]
+            for r in self.conn.execute(
+                "SELECT user_id FROM users WHERE banned = 0"
+            ).fetchall()
+        ]
 
 
 db = Database(DB_PATH)
@@ -855,6 +875,7 @@ def admin_panel_kb():
         ],
         [
             InlineKeyboardButton("👥 用户统计", callback_data="adm:count"),
+            InlineKeyboardButton("📢 发布公告", callback_data="adm:announce"),
         ],
     ])
 
@@ -1073,6 +1094,15 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     elif data == "adm:count":
         await show_user_list(query, page=0)
+    elif data == "adm:announce":
+        ADMIN_PENDING[user.id] = "announce"
+        await query.edit_message_text(
+            "📢 *发布公告*\n\n"
+            "直接发送公告内容，会立刻推送给所有用户。\n"
+            "支持 Markdown（*粗体* _斜体_ `代码`）。",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=admin_back_kb(),
+        )
 
 
 async def admin_pending_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -1085,6 +1115,39 @@ async def admin_pending_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     text = (update.message.text or "").strip()
     parts = text.split()
+
+    if action == "announce":
+        ADMIN_PENDING.pop(user.id, None)
+        if not text:
+            await safe_reply(update, "❌ 公告内容不能为空。")
+            return True
+
+        db.add_announcement(text)
+
+        user_ids = db.list_all_user_ids()
+        broadcast = f"📢 *公告*\n\n{text}"
+
+        success, fail = 0, 0
+        for uid in user_ids:
+            try:
+                await context.bot.send_message(
+                    chat_id=uid,
+                    text=broadcast,
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                success += 1
+            except Exception as e:
+                logger.warning(f"推送 {uid} 失败: {e}")
+                fail += 1
+            await asyncio.sleep(0.05)  # 约 20 条/秒，防限流
+
+        await safe_reply(
+            update,
+            f"✅ 公告已推送\n📤 成功 {success} | ❌ 失败 {fail}",
+            reply_markup=admin_back_kb(),
+        )
+        return True
+
     ADMIN_PENDING.pop(user.id, None)
 
     if action in ("add", "sub"):
