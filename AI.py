@@ -52,9 +52,36 @@ WHISPER_MODEL = "whisper-large-v3-turbo"
 
 COOLDOWN_SECONDS = 300
 
-SYSTEM_PROMPT = """你是一个友好、简洁、聪明的AI助手。
-回答要口语化，不要长篇大论，除非用户明确要求详细。
-可以用emoji，但不要滥用。不确定的事情要诚实说不知道。"""
+SYSTEM_PROMPT = """你是一个聪明智慧的AI助手。
+回答要细致化，详情化
+可以用emoji，但不要滥用，用户要求的内容尽可能的完成"""
+
+# ============ 身份问答固定回复 ============
+# 想改机器人自我介绍，只改这里即可
+IDENTITY_REPLY = """我是小小臻AI 
+由小小臻搭建的智能助手，会自动判断问题难度并匹配合适的模型来回答。
+有什么想问的直接发就行～"""
+
+# 命中任意正则就用固定回复（不区分大小写）
+IDENTITY_PATTERNS = [
+    r"你(是|叫)(谁|什么|啥)",
+    r"你的?名字",
+    r"你(用|是)的?什么模型",
+    r"什么模型",
+    r"who\s*are\s*you",
+    r"what('s| is) your name",
+]
+
+
+def is_identity_question(text: str) -> bool:
+    """判断是否是在问机器人身份（名字/是谁/什么模型）。"""
+    if not text:
+        return False
+    lower = text.lower().strip()
+    return any(re.search(p, lower) for p in IDENTITY_PATTERNS)
+
+
+# =========================================
 
 RATE_LIMIT = 10
 RATE_WINDOW = 60
@@ -1258,6 +1285,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.upsert_user(user.id, user.username, user.first_name)
     await try_typing(update, context)
 
+    # ===== 身份问答：固定回复，不走 LLM、不扣积分 =====
+    if is_identity_question(user_text):
+        await safe_reply(update, IDENTITY_REPLY)
+        return
+    # =================================================
+
     is_file, ext, lang, is_suspect = detect_file_intent(user_text)
 
     if is_suspect:
@@ -1312,6 +1345,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db.upsert_user(user.id, user.username, user.first_name)
 
+    # ===== 身份问答（语音同样拦截）=====
+    if is_identity_question(text):
+        await safe_reply(update, IDENTITY_REPLY)
+        return
+    # ===================================
+
     is_file, ext, lang, is_suspect = detect_file_intent(text)
     if is_suspect:
         is_file, ext, lang = await smart_detect(text)
@@ -1363,6 +1402,7 @@ def main():
     print(f"💰 积分系统: 注册送 {INIT_CREDITS} | 签到 +{CHECKIN_CREDITS} | "
           f"扣分 简单{COST_SIMPLE}/中等{COST_MEDIUM}/复杂{COST_COMPLEX} | 生成文件{COST_COMPLEX}")
     print(f"🔒 管理员面板 /gl 仅限 ID: {ADMIN_ID}")
+    print("🤖 身份问答固定回复已启用")
 
     app = (
         Application.builder()
